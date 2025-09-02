@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+<title>POE2 – Live Multi-Build Tracker</title>
+
+<!-- Home-screen icon -->
+<link rel="apple-touch-icon" href="https://upload.wikimedia.org/wikipedia/commons/9/9a/Path_of_Exile_2_logo.png">
+<link rel="icon" href="https://upload.wikimedia.org/wikipedia/commons/9/9a/Path_of_Exile_2_logo.png">
+<meta name="theme-color" content="#0e0f12"/>
+
+<style>
+  :root{
+    --bg:#0e0f12; --fg:#eaeaea; --muted:#9aa4b2;
+    --panel:#121419; --panel2:#171a20; --border:#242831; --border2:#2b3039;
+    --ok:#2f7d57; --bad:#7d3a3a; --bar:#4a997a;
+    --gap:12px; --indent:20px; --rad:12px;
+  }
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--fg);font-family:-apple-system,system-ui,Segoe UI,Roboto,Arial,sans-serif;min-height:100%}
+
+  /* Background system */
+  body.build-bg{
+    background-size:cover; background-attachment:fixed; background-position:center top; background-repeat:no-repeat;
+  }
+  body::before{
+    content:""; position:fixed; inset:0;
+    background:linear-gradient(180deg, rgba(8,10,14,.30), rgba(8,10,14,.52) 35%, rgba(8,10,14,.72));
+    pointer-events:none; z-index:-1;
+  }
+
+  /* ===== Toolbar (mobile-friendly: wraps to new lines) ===== */
+  header{
+    position:sticky; top:0; z-index:10;
+    background:rgba(14,15,18,.82); backdrop-filter:blur(8px);
+    border-bottom:1px solid var(--border);
+    display:flex; flex-wrap:wrap; gap:10px; align-items:center; padding:10px 12px
+  }
+  h1{margin:0;font-size:16px;flex:1 1 280px}
+  .pick{display:flex;gap:8px;align-items:center;flex-wrap:wrap;flex:1 1 280px}
+  label{font-size:13px;color:var(--muted)}
+  select{background:#17191d;border:1px solid #3a3f47;color:var(--fg);border-radius:10px;padding:8px 10px;font-size:14px}
+  .actions{display:flex;gap:8px;flex-wrap:wrap;flex:1 1 320px}
+  .btn{background:#17191d;border:1px solid #3a3f47;color:var(--fg);border-radius:10px;padding:8px 10px;font-size:13px}
+  .pill{font-size:12px;color:#cfeadf;border:1px solid #2a4; background:rgba(30,120,80,.25); border-radius:999px; padding:6px 10px}
+
+  .wrap{display:grid;grid-template-columns:1fr;gap:var(--gap);padding:var(--gap)}
+  .root{background:rgba(18,20,25,.86);border:1px solid var(--border);border-radius:14px;overflow:hidden}
+  .rootHead{display:flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:space-between;padding:12px 14px;border-bottom:1px solid var(--border)}
+  .rootTitle{font-weight:700}
+  .badge{font-size:11px;border:1px solid var(--border2);padding:2px 6px;border-radius:6px;color:#cfd7e5}
+  .progress{height:10px;background:#1b1e24;border-radius:10px;margin:10px 14px;overflow:hidden}
+  .bar{height:100%;width:0;background:var(--bar);transition:width .25s}
+  .tree{padding:8px 6px}
+
+  .node{border-left:2px solid #222a32;margin-left:10px;padding-left:10px}
+  .nodeTop{display:flex;align-items:center;gap:8px;padding:8px;border-radius:10px}
+  .nodeTop:hover{background:rgba(20,24,32,.65)}
+  .twist{width:22px;height:22px;border:1px solid var(--border);background:#14161b;border-radius:6px;display:grid;place-items:center;font-size:12px;cursor:pointer}
+  .twist.open::after{content:"–"} .twist::after{content:"+"}
+  .title{font-weight:650}
+  .status{margin-left:auto;font-size:12px}
+  .status.done{color:var(--ok)}
+  .children{margin-left:var(--indent);display:none}
+  .children.open{display:block}
+  .card{background:rgba(23,26,32,.88);border:1px solid var(--border2);border-radius:10px;padding:10px;margin:8px 0;display:grid;gap:8px}
+  .req{background:#1a1f27;border:1px solid #2d3340;border-radius:10px;padding:8px;display:grid;gap:6px}
+  .reqRow{display:flex;align-items:center;justify-content:space-between;gap:8px}
+  .req.ok{border-color:var(--ok);box-shadow: inset 0 0 0 1px var(--ok)}
+  .req.bad{border-color:var(--bad);box-shadow: inset 0 0 0 1px var(--bad)}
+  .req label{font-size:12px;color:#a9b3c3}
+  .req input[type="number"]{width:120px;background:#12161c;border:1px solid #2b313e;color:var(--fg);border-radius:8px;padding:6px 8px;font-size:14px}
+  .req input[type="checkbox"]{transform:scale(1.2)}
+  .hint{color:var(--muted);font-size:12px;text-align:center}
+  .panel{background:rgba(18,20,25,.86);border:1px solid var(--border);border-radius:14px;padding:12px}
+  .panel h2{margin:2px 0 8px;font-size:15px}
+  .list{display:grid;gap:8px}
+</style>
+</head>
+<body class="build-bg">
+<header>
+  <h1>POE2 – Live Multi-Build Tracker</h1>
+  <div class="pick">
+    <label for="classPick">Class</label>
+    <select id="classPick"></select>
+    <label for="buildPick">Build</label>
+    <select id="buildPick"></select>
+  </div>
+  <div class="actions">
+    <span id="liveBadge" class="pill">Live: checking…</span>
+    <button class="btn" id="syncBtn">Fetch Latest</button>
+    <button class="btn" id="exportBtn">Export</button>
+    <button class="btn" id="importBtn">Import</button>
+    <button class="btn" id="resetBtn">Reset</button>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="root">
+    <div class="rootHead">
+      <div class="rootTitle" id="rootTitle">Class / Build</div>
+      <div class="badge" id="overallBadge">0 / 0 complete</div>
+    </div>
+    <div class="progress"><div class="bar" id="overallBar"></div></div>
+    <div class="tree" id="tree"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Quick Tips</h2>
+    <div class="list">
+      <div class="hint">Auto-updates from your Gist on open. If offline, uses the last cached data or built-in defaults.</div>
+      <div class="hint">Numeric goals auto-validate (≥ or ≤). Checkboxes toggle tasks. Completion bubbles up automatically.</div>
+      <div class="hint">Progress is saved locally per build. Export/Import to move between devices.</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ================= LIVE DATA SYSTEM ================= */
+const DATA_URLS_DEFAULT = [
+  "https://gist.githubusercontent.com/dillonhardy27-hub/7b27c7bf4cac678dc31f6dab498d8be9/raw/d2e04560541fa3fbd801a631bdde67657bc9fd04/poe2_builds.json"
+];
+
+const LS_KEYS = {
+  remoteData: "poe2_live_remote_data_v2",
+  lastOk: "poe2_live_last_ok_v2"
+};
+
+function setLiveBadge(text, ok=true){
+  const liveBadge=document.getElementById('liveBadge');
+  liveBadge.textContent=text;
+  liveBadge.style.borderColor= ok? '#2a4':'#944';
+  liveBadge.style.background= ok? 'rgba(30,120,80,.25)':'rgba(150,60,60,.25)';
+  liveBadge.style.color= ok? '#cfeadf':'#ffd7d7';
+}
+
+async function fetchFirstOk(urls){
+  for(const url of urls){
+    try{
+      const res=await fetch(url,{cache:'no-store'});
+      if(!res.ok) continue;
+      const json=await res.json();
+      return {url,json};
+    }catch(e){}
+  }
+  throw new Error('All data URLs failed');
+}
+
+function applyRemote(json){
+  if(json && typeof json==='object'){
+    if(json.class_backgrounds) CLASS_BACKGROUNDS = {...CLASS_BACKGROUNDS_DEFAULT, ...json.class_backgrounds};
+    if(json.build_backgrounds) BUILD_BACKGROUNDS = {...BUILD_BACKGROUNDS_DEFAULT, ...json.build_backgrounds};
+    if(json.builds)            BUILDS            = json.builds;
+  }
+}
+
+/* ================= DEFAULT (LOCAL) DATA (fallback) ================= */
+const CLASS_BACKGROUNDS_DEFAULT = {
+  "Huntress": "https://images.unsplash.com/photo-1520975922284-9d4642d388bf?q=80&w=1600&auto=format&fit=crop",
+  "Sorceress": "https://images.unsplash.com/photo-1520975918318-9e6bb04d08a0?q=80&w=1600&auto=format&fit=crop",
+  "Witch":     "https://images.unsplash.com/photo-1520975722213-28965d36f0f3?q=80&w=1600&auto=format&fit=crop",
+  "Monk":      "https://images.unsplash.com/photo-1520975746885-2c7f1beee0e2?q=80&w=1600&auto=format&fit=crop",
+  "Ranger":    "https://images.unsplash.com/photo-1520975772872-96f17a9bf8a5?q=80&w=1600&auto=format&fit=crop",
+  "Warrior":   "https://images.unsplash.com/photo-1611095564985-9061c9f33df1?q=80&w=1600&auto=format&fit=crop",
+  "Rasca":     "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1600&auto=format&fit=crop"
+};
+
+const BUILD_BACKGROUNDS_DEFAULT = {
+  "Huntress:Lightning Spear Amazon": "https://images.unsplash.com/photo-1605721911519-3dfeb3be25e7?q=80&w=1600&auto=format&fit=crop",
+  "Huntress:Bleed Twister":          "https://images.unsplash.com/photo-1501785888041-af3ef285b470?q=80&w=1600&auto=format&fit=crop",
+  "Sorceress:Spark Archmage":        "https://images.unsplash.com/photo-1482192505345-5655af888cc4?q=80&w=1600&auto=format&fit=crop",
+  "Witch:Minion Infernalist":        "https://images.unsplash.com/photo-1519681393784-d120267933ba?q=80&w=1600&auto=format&fit=crop",
+  "Monk:Ice Strike Invoker":         "https://images.unsplash.com/photo-1520975746885-2c7f1beee0e2?q=80&w=1600&auto=format&fit=crop",
+  "Rasca:Lightning Spear":           "https://images.unsplash.com/photo-1520975918318-9e6bb04d08a0?q=80&w=1600&auto=format&fit=crop"
+};
+
+const BUILDS_DEFAULT = {
+  "Huntress": {
+    "Lightning Spear Amazon": [
+      { id:"act1", label:"Act 1", milestones:[
+        { id:"a1_primal", label:"Primal Sundering", reqs:[
+          {id:"a1_lvl", kind:"num", label:"Level ≥", target:12},
+          {id:"a1_dex", kind:"num", label:"Dexterity ≥", target:30}
+        ]},
+        { id:"a1_ls", label:"Lightning Spear Online", reqs:[
+          {id:"a1_lsgem", kind:"num", label:"LS Gem ≥", target:3},
+          {id:"a1_wdps", kind:"num", label:"Weapon DPS ≥", target:20}
+        ]},
+        { id:"a1_hot", label:"Herald of Thunder", reqs:[
+          {id:"a1_unres", kind:"num", label:"Unreserved Mana ≤ %", target:70, lte:true}
+        ]},
+        { id:"a1_move", label:"Movement Online", reqs:[
+          {id:"a1_ms", kind:"num", label:"Move Speed ≥ %", target:20}
+        ]},
+        { id:"a1_life", label:"Early Survivability", reqs:[
+          {id:"a1_hp", kind:"num", label:"Max Life ≥", target:200}
+        ]}
+      ]},
+      { id:"act2", label:"Act 2", milestones:[
+        { id:"a2_frenzy", label:"+1 Frenzy Cluster", reqs:[
+          {id:"a2_frc", kind:"num", label:"Frenzy Charges ≥", target:3}
+        ]},
+        { id:"a2_barrage", label:"Barrage Single-Target", reqs:[
+          {id:"a2_brg", kind:"num", label:"Gem Level ≥", target:5}
+        ]},
+        { id:"a2_swap", label:"Storm Lance Window (14-21)", reqs:[
+          {id:"a2_sl", kind:"num", label:"SL Gem ≥", target:5}
+        ]},
+        { id:"a2_res", label:"Boss-Ready Resists", reqs:[
+          {id:"a2_resavg", kind:"num", label:"Avg Resist ≥ %", target:60}
+        ]}
+      ]},
+      { id:"act3", label:"Act 3", milestones:[
+        { id:"a3_spear", label:"Spear Mastery Path", reqs:[
+          {id:"a3_wdps", kind:"num", label:"Weapon DPS ≥", target:65}
+        ]},
+        { id:"a3_shock", label:"Shock Scaling", reqs:[
+          {id:"a3_shk", kind:"num", label:"Shock Chance ≥ %", target:60}
+        ]},
+        { id:"a3_asc", label:"Ascendancy #1", reqs:[
+          {id:"a3_trial", kind:"chk", label:"Trial Complete?", target:true}
+        ]},
+        { id:"a3_boots", label:"30% MS Boots", reqs:[
+          {id:"a3_ms", kind:"num", label:"Move Speed ≥ %", target:30}
+        ]}
+      ]}
+    ],
+    "Bleed Twister": [
+      { id:"hbt1", label:"Act 1", milestones:[
+        { id:"hbt_tw", label:"Twister Online", reqs:[
+          {id:"hbt_tg", kind:"num", label:"Gem ≥", target:3},
+          {id:"hbt_pdps", kind:"num", label:"Phys DPS ≥", target:20}
+        ]},
+        { id:"hbt_life", label:"Life/Armor", reqs:[
+          {id:"hbt_hp", kind:"num", label:"Max Life ≥", target:200}
+        ]}
+      ]},
+      { id:"hbt2", label:"Act 2", milestones:[
+        { id:"hbt_bleed", label:"Bleed Nodes Online", reqs:[
+          {id:"hbt_chance", kind:"num", label:"Bleed Chance ≥ %", target:60}
+        ]},
+        { id:"hbt_res", label:"Resists Ready", reqs:[
+          {id:"hbt_resavg", kind:"num", label:"Avg Resist ≥ %", target:60}
+        ]}
+      ]}
+    ]
+  },
+  "Sorceress": {
+    "Spark Archmage": [
+      { id:"s1", label:"Act 1", milestones:[
+        { id:"s1_sp", label:"Spark Online", reqs:[
+          {id:"s1_g", kind:"num", label:"Gem ≥", target:3}
+        ]},
+        { id:"s1_mana", label:"Mana Setup", reqs:[
+          {id:"s1_unres", kind:"num", label:"Unreserved ≤ %", target:70, lte:true}
+        ]}
+      ]},
+      { id:"s2", label:"Act 2", milestones:[
+        { id:"s2_move", label:"Mobility/Defense", reqs:[
+          {id:"s2_cd", kind:"num", label:"CDR ≤ s", target:2, lte:true}
+        ]},
+        { id:"s2_res", label:"Resists Ready", reqs:[
+          {id:"s2_r", kind:"num", label:"Avg Resist ≥ %", target:60}
+        ]}
+      ]}
+    ]
+  },
+  "Witch": {
+    "Minion Infernalist": [
+      { id:"w1", label:"Act 1", milestones:[
+        { id:"w1_rs", label:"Raging Spirits", reqs:[
+          {id:"w1_rsg", kind:"num", label:"Gem ≥", target:3}
+        ]},
+        { id:"w1_md", label:"Minion Damage", reqs:[
+          {id:"w1_mdps", kind:"num", label:"Minion Dmg ≥ %", target:40}
+        ]}
+      ]},
+      { id:"w2", label:"Act 2", milestones:[
+        { id:"w2_aura", label:"Auras Online", reqs:[
+          {id:"w2_unr", kind:"num", label:"Unreserved ≤ %", target:70, lte:true}
+        ]},
+        { id:"w2_wall", label:"Minion Wall", reqs:[
+          {id:"w2_cnt", kind:"num", label:"Active Minions ≥", target:8}
+        ]}
+      ]}
+    ]
+  },
+  "Monk": {
+    "Ice Strike Invoker": [
+      { id:"m1", label:"Act 1", milestones:[
+        { id:"m1_is", label:"Ice Strike Online", reqs:[
+          {id:"m1_ig", kind:"num", label:"Gem ≥", target:3}
+        ]},
+        { id:"m1_frz", label:"Freeze Chance", reqs:[
+          {id:"m1_fz", kind:"num", label:"Freeze ≥ %", target:30}
+        ]}
+      ]},
+      { id:"m2", label:"Act 2", milestones:[
+        { id:"m2_ctrl", label:"Boss Control", reqs:[
+          {id:"m2_cdr", kind:"num", label:"CDR ≤ s", target:2, lte:true}
+        ]},
+        { id:"m2_res", label:"Resists Ready", reqs:[
+          {id:"m2_resm", kind:"num", label:"Avg Resist ≥ %", target:60}
+        ]}
+      ]}
+    ]
+  },
+  "Rasca": {
+    "Lightning Spear": [
+      { id:"r1", label:"Act 1", milestones:[
+        { id:"r1_ls", label:"LS Online", reqs:[
+          {id:"r1_g", kind:"num", label:"Gem ≥", target:3}
+        ]}
+      ]}
+    ]
+  }
+};
+
+/* === Live state === */
+let CLASS_BACKGROUNDS = {...CLASS_BACKGROUNDS_DEFAULT};
+let BUILD_BACKGROUNDS = {...BUILD_BACKGROUNDS_DEFAULT};
+let BUILDS = JSON.parse(JSON.stringify(BUILDS_DEFAULT));
+
+/* ================= RENDER / STATE / UI ================= */
+const progressKey = (cls,bld)=>`poe2_build_${cls}__${bld}`;
+const loadBuild=(cls,bld)=>{try{return JSON.parse(localStorage.getItem(progressKey(cls,bld))||'{}')}catch(e){return{}}};
+const saveBuild=(cls,bld,s)=>localStorage.setItem(progressKey(cls,bld),JSON.stringify(s));
+
+const classPick=document.getElementById('classPick');
+const buildPick=document.getElementById('buildPick');
+const rootTitle=document.getElementById('rootTitle');
+const treeEl=document.getElementById('tree');
+const barEl=document.getElementById('overallBar');
+const badgeEl=document.getElementById('overallBadge');
+
+function pct(n,d){return d?Math.round((n/d)*100):0;}
+function countMilestones(acts){return acts.reduce((a,act)=>a+act.milestones.length,0);}
+function countDone(acts,st){let n=0;acts.forEach(act=>act.milestones.forEach(ms=>{if(st[ms.id]?.__done)n++;}));return n;}
+
+function setBackground(cls,bld){
+  const key = `${cls}:${bld}`;
+  const url = BUILD_BACKGROUNDS[key] || CLASS_BACKGROUNDS[cls];
+  document.body.style.backgroundImage = url ? `url('${url}')` : 'none';
+}
+
+function refreshBuilds(){
+  const cls=classPick.value || Object.keys(BUILDS)[0];
+  buildPick.innerHTML='';
+  Object.keys(BUILDS[cls]).forEach(b=>{
+    const opt=document.createElement('option'); opt.value=b; opt.textContent=b; buildPick.appendChild(opt);
+  });
+}
+
+function render(){
+  const cls=classPick.value || Object.keys(BUILDS)[0];
+  const bld=buildPick.value || Object.keys(BUILDS[cls])[0];
+  setBackground(cls,bld);
+
+  const acts=BUILDS[cls][bld]; const st=loadBuild(cls,bld);
+  rootTitle.textContent=`${cls} / ${bld}`;
+  const total=countMilestones(acts),done=countDone(acts,st);
+  badgeEl.textContent=`${done} / ${total} complete`;
+  barEl.style.width=pct(done,total)+'%';
+  treeEl.innerHTML='';
+
+  const buildNode=document.createElement('div'); buildNode.className='node';
+  const buildTop=document.createElement('div'); buildTop.className='nodeTop';
+  const buildTw=document.createElement('div'); buildTw.className='twist open';
+  const buildTitle=document.createElement('div'); buildTitle.className='title'; buildTitle.textContent=bld;
+  const buildStatus=document.createElement('div'); buildStatus.className='status';
+  const buildKids=document.createElement('div'); buildKids.className='children open';
+  buildTop.appendChild(buildTw); buildTop.appendChild(buildTitle); buildTop.appendChild(buildStatus);
+  buildNode.appendChild(buildTop); buildNode.appendChild(buildKids);
+
+  let allActsDone=true;
+
+  acts.forEach(act=>{
+    const actNode=document.createElement('div'); actNode.className='node';
+    const top=document.createElement('div'); top.className='nodeTop';
+    const tw=document.createElement('div'); tw.className='twist';
+    const title=document.createElement('div'); title.className='title'; title.textContent=act.label;
+    const status=document.createElement('div'); status.className='status';
+    const kids=document.createElement('div'); kids.className='children';
+    let open=true; function sync(){kids.classList.toggle('open',open); tw.classList.toggle('open',open);}
+    sync();
+    top.appendChild(tw); top.appendChild(title); top.appendChild(status);
+    actNode.appendChild(top); actNode.appendChild(kids);
+    top.addEventListener('click',(e)=>{const t=(e.target.tagName||'').toLowerCase(); if(t==='input'||t==='button') return; open=!open; sync();});
+
+    let actDone=true;
+    act.milestones.forEach(ms=>{
+      const msNode=document.createElement('div'); msNode.className='node';
+      const msTop=document.createElement('div'); msTop.className='nodeTop';
+      const msTw=document.createElement('div'); msTw.className='twist open';
+      const msTitle=document.createElement('div'); msTitle.className='title'; msTitle.textContent=ms.label;
+      const msStatus=document.createElement('div'); msStatus.className='status';
+      const msKids=document.createElement('div'); msKids.className='children open';
+      msTop.appendChild(msTw); msTop.appendChild(msTitle); msTop.appendChild(msStatus);
+      msNode.appendChild(msTop); msNode.appendChild(msKids);
+
+      const cur=st[ms.id]||{};
+      const card=document.createElement('div'); card.className='card'; msKids.appendChild(card);
+      let met=0;
+
+      ms.reqs.forEach(r=>{
+        const rc=document.createElement('div'); rc.className='req';
+        const row=document.createElement('div'); row.className='reqRow';
+        const lab=document.createElement('label'); lab.textContent=`${r.label} ${r.target}`;
+        const mark=document.createElement('span'); mark.textContent='✓'; mark.style.opacity=.3;
+        row.appendChild(lab); row.appendChild(mark); rc.appendChild(row);
+
+        let ok=false;
+        if(r.kind==='num'){
+          const inp=document.createElement('input'); inp.type='number'; inp.inputMode='numeric';
+          inp.placeholder=r.target; inp.value= cur[r.id] ?? '';
+          inp.addEventListener('input',()=>{const all=loadBuild(cls,bld)||{}; all[ms.id]=all[ms.id]||{}; all[ms.id][r.id]=inp.value; saveBuild(cls,bld,all); render();});
+          rc.appendChild(inp);
+          const val=Number(cur[r.id]); if(!isNaN(val)){ ok = r.lte ? (val<=r.target) : (val>=r.target); }
+        } else if(r.kind==='chk'){
+          const inp=document.createElement('input'); inp.type='checkbox'; inp.checked=!!cur[r.id];
+          inp.addEventListener('change',()=>{const all=loadBuild(cls,bld)||{}; all[ms.id]=all[ms.id]||{}; all[ms.id][r.id]=inp.checked; saveBuild(cls,bld,all); render();});
+          rc.appendChild(inp); ok = !!cur[r.id] === true;
+        }
+
+        if(ok){ rc.classList.add('ok'); mark.style.opacity=1; met++; }
+        else if(cur[r.id]!==undefined && cur[r.id]!=="" ){ rc.classList.add('bad'); }
+        card.appendChild(rc);
+      });
+
+      const allMet=(ms.reqs?.length||0)>0 && met===ms.reqs.length;
+      if(allMet && !cur.__done){
+        const all=loadBuild(cls,bld)||{}; all[ms.id]=all[ms.id]||{}; all[ms.id].__done=true; saveBuild(cls,bld,all);
+      }
+      const fresh=loadBuild(cls,bld)||{}; const now=fresh[ms.id]||{};
+      msStatus.textContent = now.__done ? "✅ Done" : "—"; msStatus.classList.toggle('done', !!now.__done);
+      if(!now.__done) actDone=false;
+
+      kids.appendChild(msNode);
+    });
+
+    status.textContent = actDone ? "✅ Complete" : "—";
+    status.classList.toggle('done', actDone);
+    if(!actDone) allActsDone=false;
+
+    buildKids.appendChild(actNode);
+  });
+
+  buildStatus.textContent = allActsDone ? "✅ Complete" : "—";
+  buildStatus.classList.toggle('done', allActsDone);
+
+  treeEl.appendChild(buildNode);
+}
+
+function initSelectors(){
+  classPick.innerHTML='';
+  Object.keys(BUILDS).forEach(c=>{
+    const opt=document.createElement('option'); opt.value=c; opt.textContent=c; classPick.appendChild(opt);
+  });
+  refreshBuilds();
+  classPick.addEventListener('change',()=>{refreshBuilds(); render();});
+  buildPick.addEventListener('change',()=>render());
+}
+
+/* ======= Export/Import/Reset ======= */
+document.getElementById('resetBtn').addEventListener('click',()=>{
+  const cls=classPick.value || Object.keys(BUILDS)[0];
+  const bld=buildPick.value || Object.keys(BUILDS[cls])[0];
+  if(confirm(`Reset progress for ${cls} / ${bld}?`)){
+    localStorage.removeItem(progressKey(cls,bld)); render();
+  }
+});
+document.getElementById('exportBtn').addEventListener('click',()=>{
+  const cls=classPick.value || Object.keys(BUILDS)[0];
+  const bld=buildPick.value || Object.keys(BUILDS[cls])[0];
+  const data=localStorage.getItem(progressKey(cls,bld))||'{}';
+  const blob=new Blob([data],{type:'application/json'});
+  const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download=`${cls}_${bld}_progress.json`.replace(/\s+/g,'_'); a.click();
+});
+document.getElementById('importBtn').addEventListener('click',()=>{
+  const cls=classPick.value || Object.keys(BUILDS)[0];
+  const bld=buildPick.value || Object.keys(BUILDS[cls])[0];
+  const inp=document.createElement('input'); inp.type='file'; inp.accept='application/json';
+  inp.addEventListener('change',()=>{
+    const f=inp.files[0]; if(!f) return;
+    const r=new FileReader(); r.onload=()=>{ try{ localStorage.setItem(progressKey(cls,bld), r.result); render(); }catch(e){ alert('Invalid JSON'); } };
+    r.readAsText(f);
+  });
+  inp.click();
+});
+
+/* ================= Sync on load ================== */
+(async function boot(){
+  try{
+    setLiveBadge('Checking…', true);
+    const {json}=await fetchFirstOk(DATA_URLS_DEFAULT);
+    localStorage.setItem(LS_KEYS.remoteData, JSON.stringify({ts:Date.now(), data:json}));
+    applyRemote(json);
+    setLiveBadge(`Live ✓ ${json.updated ? new Date(json.updated).toLocaleString() : 'now'}`, true);
+  }catch(e){
+    const cached = localStorage.getItem(LS_KEYS.remoteData);
+    if(cached){
+      try{
+        const parsed=JSON.parse(cached);
+        applyRemote(parsed.data);
+        setLiveBadge(`Offline (cached) • ${new Date(parsed.ts).toLocaleString()}`, false);
+      }catch(_){}
+    }else{
+      // use defaults already loaded
+      setLiveBadge('Offline — using defaults', false);
+    }
+  }
+  initSelectors(); render();
+})();
+</script>
+</body>
+</html>
